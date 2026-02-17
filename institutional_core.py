@@ -9,13 +9,15 @@ def analyze():
         if df.empty:
             return safe_return("No data")
 
-        price = float(df["Close"].iloc[-1])
+        price = df["Close"].iloc[-1].item()
 
-        liquidity_high = float(df["High"].rolling(40).max().iloc[-1])
-        liquidity_low = float(df["Low"].rolling(40).min().iloc[-1])
+        liquidity_high = df["High"].rolling(40).max().iloc[-1].item()
 
-        ema50 = float(df["Close"].ewm(span=50).mean().iloc[-1])
-        ema200 = float(df["Close"].ewm(span=200).mean().iloc[-1])
+        liquidity_low = df["Low"].rolling(40).min().iloc[-1].item()
+
+        ema50 = df["Close"].ewm(span=50).mean().iloc[-1].item()
+
+        ema200 = df["Close"].ewm(span=200).mean().iloc[-1].item()
 
         signal = "WAIT"
         sl = price
