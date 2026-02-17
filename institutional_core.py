@@ -1,65 +1,70 @@
 import yfinance as yf
-import numpy as np
-from orderflow import get_orderflow
-from cot import get_institutional_bias
 
 def analyze():
 
-    df = yf.download("GC=F", period="6mo", interval="1d")
+    try:
 
-    price = float(df["Close"].iloc[-1])
+        df = yf.download("GC=F", period="6mo", interval="1d", progress=False)
 
-    # liquidity zones
-    liquidity_high = df["High"].rolling(40).max().iloc[-1]
-    liquidity_low = df["Low"].rolling(40).min().iloc[-1]
+        if df.empty:
+            return safe_return("No data")
 
-    # institutional trend
-    ema50 = df["Close"].ewm(span=50).mean().iloc[-1]
-    ema200 = df["Close"].ewm(span=200).mean().iloc[-1]
+        price = float(df["Close"].iloc[-1])
 
-    # orderflow
-    flow = get_orderflow()
+        liquidity_high = float(df["High"].rolling(40).max().iloc[-1])
+        liquidity_low = float(df["Low"].rolling(40).min().iloc[-1])
 
-    bias = get_institutional_bias()
+        ema50 = float(df["Close"].ewm(span=50).mean().iloc[-1])
+        ema200 = float(df["Close"].ewm(span=200).mean().iloc[-1])
 
-    signal = "WAIT"
+        signal = "WAIT"
+        sl = price
+        tp = price
 
-    entry = price
-    sl = price
-    tp = price
+        if ema50 > ema200:
 
-    # Institutional buy logic
-    if ema50 > ema200 and flow["imbalance"] > 0 and bias == "BULLISH":
+            signal = "BUY"
 
-        signal = "BUY"
+            sl = liquidity_low
 
-        sl = liquidity_low
+            risk = price - sl
 
-        risk = entry - sl
+            tp = price + (risk * 3)
 
-        tp = entry + (risk * 3)
+        elif ema50 < ema200:
 
-    # Institutional sell logic
-    elif ema50 < ema200 and flow["imbalance"] < 0 and bias == "BEARISH":
+            signal = "SELL"
 
-        signal = "SELL"
+            sl = liquidity_high
 
-        sl = liquidity_high
+            risk = sl - price
 
-        risk = sl - entry
+            tp = price - (risk * 3)
 
-        tp = entry - (risk * 3)
+        return {
+
+            "signal": signal,
+            "entry": price,
+            "sl": sl,
+            "tp": tp,
+            "price": price
+
+        }
+
+    except Exception as e:
+
+        return safe_return(str(e))
+
+
+def safe_return(error):
 
     return {
 
-        "signal": signal,
-        "entry": entry,
-        "sl": sl,
-        "tp": tp,
-        "price": price,
-        "institutional_bias": bias,
-        "orderflow_imbalance": flow["imbalance"],
-        "liquidity_high": liquidity_high,
-        "liquidity_low": liquidity_low
+        "signal": "WAIT",
+        "entry": 0,
+        "sl": 0,
+        "tp": 0,
+        "price": 0,
+        "error": error
 
     }
