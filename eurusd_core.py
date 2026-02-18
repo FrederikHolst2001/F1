@@ -8,13 +8,8 @@ def analyze_eurusd():
         # Første forsøg (M15)
         m15 = yf.download("EURUSD=X", period="5d", interval="15m", progress=False)
 
-        # Fallback hvis tom
-        if m15.empty:
-            m15 = yf.download("EURUSD=X", period="10d", interval="1h", progress=False)
-
-        # Hvis stadig tom → fallback ETF proxy
-        if m15.empty:
-            m15 = yf.download("FXE", period="10d", interval="1h", progress=False)
+        if isinstance(m15.columns, pd.MultiIndex):
+            m15.columns = m15.columns.get_level_values(0)
 
         if m15.empty:
             return safe_return("Feed unavailable")
