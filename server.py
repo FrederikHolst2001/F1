@@ -1,5 +1,4 @@
 from flask import Flask, jsonify
-from institutional import institutional_signal
 from eurusd_core import analyze_eurusd
 from telegram import send_alert
 
