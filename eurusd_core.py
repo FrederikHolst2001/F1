@@ -1,68 +1,87 @@
 import yfinance as yf
 import pandas as pd
+import numpy as np
 
 def analyze_eurusd():
 
     try:
 
-        # Trend (H1)
-        h1 = yf.download("EURUSD=X", period="7d", interval="1h", progress=False)
+        m15 = yf.download("EURUSD=X", period="3d", interval="15m", progress=False)
 
-        # Entry precision (M15)
-        m15 = yf.download("EURUSD=X", period="2d", interval="15m", progress=False)
-
-        if h1.empty or m15.empty:
+        if m15.empty:
             return safe_return("No data")
 
         price = m15["Close"].iloc[-1].item()
 
-        # ===== TREND FILTER =====
-        ema20 = h1["Close"].ewm(span=20).mean().iloc[-1].item()
-        ema50 = h1["Close"].ewm(span=50).mean().iloc[-1].item()
+        highs = m15["High"]
+        lows = m15["Low"]
+        closes = m15["Close"]
 
-        bullish_trend = ema20 > ema50
-        bearish_trend = ema20 < ema50
+        # =========================
+        # STRUCTURE BREAK (BOS)
+        # =========================
 
-        # ===== STRUCTURE BREAK =====
-        last_high = m15["High"].iloc[-2]
-        prev_high = m15["High"].iloc[-3]
+        recent_high = highs.iloc[-4]
+        previous_high = highs.iloc[-6]
 
-        last_low = m15["Low"].iloc[-2]
-        prev_low = m15["Low"].iloc[-3]
+        recent_low = lows.iloc[-4]
+        previous_low = lows.iloc[-6]
 
-        structure_break_up = last_high > prev_high
-        structure_break_down = last_low < prev_low
+        bos_up = recent_high > previous_high
+        bos_down = recent_low < previous_low
 
-        # ===== VOLUME SPIKE =====
-        avg_volume = m15["Volume"].rolling(10).mean().iloc[-1]
-        current_volume = m15["Volume"].iloc[-1]
+        # =========================
+        # LIQUIDITY SWEEP
+        # =========================
 
-        volume_spike = current_volume > avg_volume * 1.5
+        sweep_low = lows.iloc[-2] < lows.iloc[-5]
+        sweep_high = highs.iloc[-2] > highs.iloc[-5]
 
-        # ===== ATR STOP =====
-        high_low = m15["High"] - m15["Low"]
-        high_close = (m15["High"] - m15["Close"].shift()).abs()
-        low_close = (m15["Low"] - m15["Close"].shift()).abs()
+        # =========================
+        # FAIR VALUE GAP (FVG)
+        # =========================
 
-        ranges = pd.concat([high_low, high_close, low_close], axis=1)
-        true_range = ranges.max(axis=1)
+        fvg_bull = lows.iloc[-2] > highs.iloc[-4]
+        fvg_bear = highs.iloc[-2] < lows.iloc[-4]
 
-        atr = true_range.rolling(14).mean().iloc[-1]
+        # =========================
+        # ATR for dynamic stop
+        # =========================
+
+        high_low = highs - lows
+        high_close = (highs - closes.shift()).abs()
+        low_close = (lows - closes.shift()).abs()
+
+        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+        atr = tr.rolling(14).mean().iloc[-1]
+
+        # =========================
+        # DEMAND / SUPPLY ZONES
+        # =========================
+
+        demand_zone = lows.rolling(10).min().iloc[-1]
+        supply_zone = highs.rolling(10).max().iloc[-1]
 
         signal = "WAIT"
         sl = price
         tp = price
 
-        # ===== BUY SNIPER =====
-        if bullish_trend and structure_break_up and volume_spike:
+        # =========================
+        # BUY CONDITIONS
+        # =========================
+
+        if bos_up and sweep_low and fvg_bull:
 
             signal = "BUY"
             sl = price - atr
             risk = atr
             tp = price + (risk * 2)
 
-        # ===== SELL SNIPER =====
-        elif bearish_trend and structure_break_down and volume_spike:
+        # =========================
+        # SELL CONDITIONS
+        # =========================
+
+        elif bos_down and sweep_high and fvg_bear:
 
             signal = "SELL"
             sl = price + atr
@@ -76,6 +95,10 @@ def analyze_eurusd():
             "sl": round(sl,5),
             "tp": round(tp,5),
             "atr": round(atr,5),
+            "bos_up": bool(bos_up),
+            "bos_down": bool(bos_down),
+            "fvg_bull": bool(fvg_bull),
+            "fvg_bear": bool(fvg_bear),
             "max_hold": "4 hours"
         }
 
