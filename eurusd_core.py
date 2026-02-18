@@ -1,53 +1,35 @@
 import yfinance as yf
 import pandas as pd
-import numpy as np
 
 def analyze_eurusd():
 
     try:
 
-        m15 = yf.download("EURUSD=X", period="3d", interval="15m", progress=False)
+        # Første forsøg (M15)
+        m15 = yf.download("EURUSD=X", period="5d", interval="15m", progress=False)
+
+        # Fallback hvis tom
+        if m15.empty:
+            m15 = yf.download("EURUSD=X", period="10d", interval="1h", progress=False)
+
+        # Hvis stadig tom → fallback ETF proxy
+        if m15.empty:
+            m15 = yf.download("FXE", period="10d", interval="1h", progress=False)
 
         if m15.empty:
-            return safe_return("No data")
+            return safe_return("Feed unavailable")
 
-        price = m15["Close"].iloc[-1].item()
+        price = float(m15["Close"].iloc[-1])
 
         highs = m15["High"]
         lows = m15["Low"]
         closes = m15["Close"]
 
-        # =========================
-        # STRUCTURE BREAK (BOS)
-        # =========================
+        # Simple structure
+        bos_up = highs.iloc[-2] > highs.iloc[-4]
+        bos_down = lows.iloc[-2] < lows.iloc[-4]
 
-        recent_high = highs.iloc[-4]
-        previous_high = highs.iloc[-6]
-
-        recent_low = lows.iloc[-4]
-        previous_low = lows.iloc[-6]
-
-        bos_up = recent_high > previous_high
-        bos_down = recent_low < previous_low
-
-        # =========================
-        # LIQUIDITY SWEEP
-        # =========================
-
-        sweep_low = lows.iloc[-2] < lows.iloc[-5]
-        sweep_high = highs.iloc[-2] > highs.iloc[-5]
-
-        # =========================
-        # FAIR VALUE GAP (FVG)
-        # =========================
-
-        fvg_bull = lows.iloc[-2] > highs.iloc[-4]
-        fvg_bear = highs.iloc[-2] < lows.iloc[-4]
-
-        # =========================
-        # ATR for dynamic stop
-        # =========================
-
+        # ATR
         high_low = highs - lows
         high_close = (highs - closes.shift()).abs()
         low_close = (lows - closes.shift()).abs()
@@ -55,38 +37,19 @@ def analyze_eurusd():
         tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         atr = tr.rolling(14).mean().iloc[-1]
 
-        # =========================
-        # DEMAND / SUPPLY ZONES
-        # =========================
-
-        demand_zone = lows.rolling(10).min().iloc[-1]
-        supply_zone = highs.rolling(10).max().iloc[-1]
-
         signal = "WAIT"
         sl = price
         tp = price
 
-        # =========================
-        # BUY CONDITIONS
-        # =========================
-
-        if bos_up and sweep_low and fvg_bull:
-
+        if bos_up:
             signal = "BUY"
             sl = price - atr
-            risk = atr
-            tp = price + (risk * 2)
+            tp = price + (atr * 2)
 
-        # =========================
-        # SELL CONDITIONS
-        # =========================
-
-        elif bos_down and sweep_high and fvg_bear:
-
+        elif bos_down:
             signal = "SELL"
             sl = price + atr
-            risk = atr
-            tp = price - (risk * 2)
+            tp = price - (atr * 2)
 
         return {
             "pair": "EURUSD",
@@ -94,11 +57,6 @@ def analyze_eurusd():
             "entry": round(price,5),
             "sl": round(sl,5),
             "tp": round(tp,5),
-            "atr": round(atr,5),
-            "bos_up": bool(bos_up),
-            "bos_down": bool(bos_down),
-            "fvg_bull": bool(fvg_bull),
-            "fvg_bear": bool(fvg_bear),
             "max_hold": "4 hours"
         }
 
